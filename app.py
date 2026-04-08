@@ -1,41 +1,63 @@
 import streamlit as st
 import os
-import gdown
 import zipfile
-from model import load_model, predict_image
+import gdown
+from model import init_model, predict_image
 
-# --- Dataset setup ---
-ZIP_URL = "https://drive.google.com/uc?id=12We6beOBig11JAZcl1gswVuow-TRKE-P"  # your Drive folder zip
-ZIP_PATH = "marine.animals.zip"
+# -----------------------------
+# Step 1: Download & extract dataset zip
+# -----------------------------
+ZIP_URL = "https://drive.google.com/uc?id=1gu5_SlVbtl0YKoVH0y9rSGl_I1URieid"  # your new zipped dataset
+ZIP_PATH = "marine_animals.zip"
 DATA_FOLDER = "marine.animals"
 
-if not os.path.exists(ZIP_PATH):
-    st.info("Downloading marine dataset...")
-    gdown.download(ZIP_URL, ZIP_PATH, quiet=False)
-
-if not os.path.exists(DATA_FOLDER):
-    st.info("Extracting dataset...")
-    with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
-        zip_ref.extractall(".")
-
-# --- Load class names ---
-CLASS_NAMES = [d for d in os.listdir(DATA_FOLDER) if os.path.isdir(os.path.join(DATA_FOLDER, d))]
-CLASS_NAMES.sort()
-
-# --- Load model ---
-model = load_model(CLASS_NAMES)
-
-# --- Streamlit UI ---
 st.title("🐠 Marine Animal Classifier")
 
-uploaded_file = st.file_uploader("Upload an image of a marine animal", type=["jpg", "png", "jpeg"])
+# Download dataset if not exists
+if not os.path.exists(ZIP_PATH):
+    with st.spinner("Downloading Marine Animals dataset..."):
+        gdown.download(ZIP_URL, ZIP_PATH, quiet=False)
 
-if uploaded_file:
+# Extract if not exists
+if not os.path.exists(DATA_FOLDER):
+    with st.spinner("Extracting dataset..."):
+        with zipfile.ZipFile(ZIP_PATH, "r") as zip_ref:
+            zip_ref.extractall(".")
+
+# Get class names from folder
+CLASS_NAMES = sorted([d for d in os.listdir(DATA_FOLDER) if os.path.isdir(os.path.join(DATA_FOLDER, d))])
+
+st.sidebar.write("Detected classes:")
+st.sidebar.write(CLASS_NAMES)
+
+# -----------------------------
+# Step 2: Setup model
+# -----------------------------
+# Download the model file from Drive if not already
+MODEL_DRIVE_URL = "https://drive.google.com/uc?id=1oCKoxaMzdi2ffrVeGnKKTrOoIpt0W4vE"
+MODEL_FILE = "marine_final_224_aug.pth"
+
+if not os.path.exists(MODEL_FILE):
+    with st.spinner("Downloading model..."):
+        gdown.download(MODEL_DRIVE_URL, MODEL_FILE, quiet=False)
+
+# Initialize model with class list
+init_model(CLASS_NAMES)
+
+# -----------------------------
+# Step 3: Image upload & prediction
+# -----------------------------
+uploaded = st.file_uploader("Upload a marine animal image", type=["jpg","png","jpeg"])
+
+if uploaded:
+    # Save temporary
     temp_path = os.path.join("temp.jpg")
     with open(temp_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+        f.write(uploaded.getbuffer())
 
     st.image(temp_path, caption="Uploaded Image", use_column_width=True)
-    st.write("Predicting...")
-    prediction = predict_image(model, CLASS_NAMES, temp_path)
-    st.success(f"This looks like: **{prediction}**")
+
+    with st.spinner("Predicting..."):
+        result = predict_image(temp_path)
+
+    st.success(f"**Prediction:** {result}")
