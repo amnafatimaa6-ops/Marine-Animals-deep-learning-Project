@@ -9,7 +9,7 @@ from io import BytesIO
 # Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# CNN + Transformer backbone
+# CNN + Transformer model
 class CNNTransformer(nn.Module):
     def __init__(self, num_classes=5):
         super(CNNTransformer, self).__init__()
@@ -39,13 +39,13 @@ class CNNTransformer(nn.Module):
         x = self.fc(x)
         return x
 
-# Class names
+# Classes of marine animals
 CLASS_NAMES = ["Dolphin", "Shark", "Whale", "Octopus", "Sea Turtle"]
 
 # Initialize model
 model = CNNTransformer(num_classes=len(CLASS_NAMES)).to(device)
 
-# Transform
+# Image transform
 transform = transforms.Compose([
     transforms.Resize((64,64)),
     transforms.ToTensor(),
@@ -53,12 +53,12 @@ transform = transforms.Compose([
 ])
 
 # Prediction function
-def predict_image(img_input):
-    if isinstance(img_input, str):
-        response = requests.get(img_input)
+def predict_image(img_url_or_pil):
+    if isinstance(img_url_or_pil, str):
+        response = requests.get(img_url_or_pil)
         img = Image.open(BytesIO(response.content)).convert("RGB")
     else:
-        img = img_input
+        img = img_url_or_pil
 
     img = transform(img).unsqueeze(0).to(device)
     model.eval()
