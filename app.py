@@ -1,52 +1,34 @@
-import os
-import random
-from PIL import Image
-import wikipedia
-
+import streamlit as st
 from model import predict_image
+from PIL import Image
+import gdown
+import os
 
-# ------------------------------
-# Dataset Path (Drive)
-# ------------------------------
-base_path = "/content/drive/MyDrive/marine.animals"
+st.set_page_config(page_title="Marine Animal Classifier", layout="wide")
 
-# ------------------------------
-# Get ALL images from dataset
-# ------------------------------
-all_images = []
+st.title("🐠 Marine Animal Classifier")
+st.write("Upload an image of a marine animal, and the model will tell you what it is and some info from Wikipedia.")
 
-for root, dirs, files in os.walk(base_path):
-    for f in files:
-        if f.lower().endswith((".jpg", ".png", ".jpeg")):
-            all_images.append(os.path.join(root, f))
+# Sidebar: Upload image
+uploaded_file = st.file_uploader("Choose a marine animal image", type=["jpg","png","jpeg"])
 
-print(f"Total images available: {len(all_images)}")
+# Optional: Google Drive dataset browsing
+st.sidebar.write("Or pick an image from the dataset")
+dataset_url = "https://drive.google.com/uc?id=12We6beOBig11JAZcl1gswVuow-TRKE-P"  # dataset folder (zip?) -> needs manual download
+st.sidebar.markdown(f"[Download dataset folder here]({dataset_url})")
 
-# ------------------------------
-# Pick RANDOM image
-# ------------------------------
-img_path = random.choice(all_images)
+if uploaded_file:
+    img = Image.open(uploaded_file)
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
-print(f"\n📂 Selected Image:\n{img_path}")
+    with st.spinner("Predicting..."):
+        label = predict_image(uploaded_file)
+        st.success(f"Prediction: **{label}**")
 
-image = Image.open(img_path).convert("RGB")
-
-# ------------------------------
-# Predict using your model
-# ------------------------------
-prediction = predict_image(image)
-
-print(f"\n🧠 Model Prediction: {prediction}")
-
-# ------------------------------
-# Wikipedia Info
-# ------------------------------
-def get_info(name):
-    try:
-        return wikipedia.summary(name, sentences=2)
-    except:
-        return "No info found on Wikipedia."
-
-info = get_info(prediction)
-
-print(f"\n📚 About {prediction}:\n{info}")
+        # Wikipedia info
+        try:
+            import wikipedia
+            summary = wikipedia.summary(label, sentences=3)
+            st.markdown(f"**About {label}:** {summary}")
+        except Exception as e:
+            st.write("Could not fetch Wikipedia info:", e)
