@@ -1,45 +1,36 @@
 import streamlit as st
-from PIL import Image
 import os
-from model import predict_image, init_model, CLASS_NAMES
-
 import gdown
+import zipfile
+from model import predict_image, CLASS_NAMES
 
-# -------------------------------
-# Download and access dataset folder
-# -------------------------------
-DATA_DRIVE_URL = "https://drive.google.com/uc?id=12We6beOBig11JAZcl1gswVuow-TRKE-P"
+# --- Download and unzip dataset ---
+ZIP_URL = "https://drive.google.com/uc?id=12We6beOBig11JAZcl1gswVuow-TRKE-P"  # your dataset zip ID
+ZIP_PATH = "marine.animals.zip"
 DATA_FOLDER = "marine.animals"
 
+if not os.path.exists(ZIP_PATH):
+    st.info("Downloading marine dataset...")
+    gdown.download(ZIP_URL, ZIP_PATH, quiet=False)
+
 if not os.path.exists(DATA_FOLDER):
-    gdown.download_folder(DATA_DRIVE_URL, quiet=False, output=DATA_FOLDER)
+    st.info("Extracting dataset...")
+    with zipfile.ZipFile(ZIP_PATH, 'r') as zip_ref:
+        zip_ref.extractall(".")
 
-# Build class list
-CLASS_NAMES.clear()
-CLASS_NAMES.extend([d for d in os.listdir(DATA_FOLDER) if os.path.isdir(os.path.join(DATA_FOLDER,d))])
+# --- Streamlit UI ---
+st.title("🐠 Marine Animal Classifier")
 
-# Initialize model now that classes are known
-init_model(len(CLASS_NAMES))
-
-# -------------------------------
-# Streamlit App
-# -------------------------------
-st.title("Marine Animal Classifier 🐠")
-
-uploaded_file = st.file_uploader("Upload an image of a marine animal", type=["png","jpg","jpeg"])
+uploaded_file = st.file_uploader("Upload an image of a marine animal", type=["jpg", "png", "jpeg"])
 
 if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    # Save uploaded file temporarily
+    temp_path = os.path.join("temp.jpg")
+    with open(temp_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    # Prediction
+    st.image(temp_path, caption="Uploaded Image", use_column_width=True)
     st.write("Predicting...")
-
-    label = predict_image(image)
-    st.success(f"Predicted: {label}")
-
-    # Wikipedia info
-    try:
-        import wikipedia
-        summary = wikipedia.summary(label, sentences=2)
-        st.info(summary)
-    except:
-        st.info("No Wikipedia info found.")
+    prediction = predict_image(temp_path)
+    st.success(f"This looks like: **{prediction}**")
