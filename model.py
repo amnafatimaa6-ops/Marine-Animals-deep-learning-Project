@@ -1,40 +1,69 @@
-import streamlit as st
-from model import predict_image, CLASS_NAMES
-import wikipedia
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision import transforms
 from PIL import Image
 import requests
 from io import BytesIO
 
-st.set_page_config(page_title="Marine Animal Classifier")
+# Device
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-st.title("🌊 Marine Animal Classifier")
-st.write("Select an animal and see what the model predicts!")
+# CNN + Transformer backbone
+class CNNTransformer(nn.Module):
+    def __init__(self, num_classes=5):
+        super(CNNTransformer, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        self.pos_embedding = nn.Parameter(torch.randn(1, 128*8*8, 128))
+        encoder_layer = nn.TransformerEncoderLayer(d_model=128, nhead=8)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
+        self.fc = nn.Linear(128, num_classes)
 
-# Function to fetch valid Wikipedia image
-@st.cache_data
-def fetch_wiki_image(animal_name):
-    try:
-        page = wikipedia.page(animal_name)
-        images = [img for img in page.images if img.lower().endswith((".jpg",".jpeg",".png"))]
-        for img_url in images:
-            try:
-                response = requests.get(img_url, timeout=5)
-                img = Image.open(BytesIO(response.content)).convert("RGB")
-                return img_url
-            except:
-                continue
-    except:
-        return None
-    return None
+    def forward(self, x):
+        x = self.conv(x)
+        B, C, H, W = x.shape
+        x = x.view(B, C*H*W, 1).permute(2, 0, 1)
+        x = x + self.pos_embedding[:, :x.size(0), :]
+        x = self.transformer(x)
+        x = x.mean(dim=0)
+        x = self.fc(x)
+        return x
 
-# User selects an animal
-selected_animal = st.selectbox("Pick a marine animal:", CLASS_NAMES)
+# Class names
+CLASS_NAMES = ["Dolphin", "Shark", "Whale", "Octopus", "Sea Turtle"]
 
-if st.button("Show image & Predict"):
-    img_url = fetch_wiki_image(selected_animal)
-    if img_url:
-        st.image(img_url, caption=f"Example {selected_animal}", use_column_width=True)
-        pred, conf = predict_image(img_url)
-        st.success(f"Predicted: {pred} ({conf*100:.1f}% confidence)")
+# Initialize model
+model = CNNTransformer(num_classes=len(CLASS_NAMES)).to(device)
+
+# Transform
+transform = transforms.Compose([
+    transforms.Resize((64,64)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])
+])
+
+# Prediction function
+def predict_image(img_input):
+    if isinstance(img_input, str):
+        response = requests.get(img_input)
+        img = Image.open(BytesIO(response.content)).convert("RGB")
     else:
-        st.error("Could not fetch an image from Wikipedia.")
+        img = img_input
+
+    img = transform(img).unsqueeze(0).to(device)
+    model.eval()
+    with torch.no_grad():
+        output = model(img)
+        prob = F.softmax(output, dim=1)
+        conf, pred = torch.max(prob, 1)
+    return CLASS_NAMES[pred.item()], conf.item()
