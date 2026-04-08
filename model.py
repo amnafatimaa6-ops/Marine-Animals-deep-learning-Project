@@ -1,36 +1,25 @@
-# model.py
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
-import requests
-from io import BytesIO
+import gdown
+import os
 
-# --------- CONFIG ---------
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# ---------------------------
+# Load model from Google Drive
+# ---------------------------
 
-# Link to your final trained model weights
-MODEL_URL = "https://drive.google.com/uc?id=1oCKoxaMzdi2ffrVeGnKKTrOoIpt0W4vE"
+MODEL_DRIVE_URL = "https://drive.google.com/uc?id=1oCKoxaMzdi2ffrVeGnKKTrOoIpt0W4vE"
+MODEL_PATH = "marine_final_224_aug.pth"
 
-# File listing all marine classes
-CLASSES_FILE = "marine_classes.txt"
+# Download if not present
+if not os.path.exists(MODEL_PATH):
+    gdown.download(MODEL_DRIVE_URL, MODEL_PATH, quiet=False)
 
-IMG_SIZE = 224  # Image size used in final training
+# Dummy: load class names from folder (will be updated in app.py)
+CLASS_NAMES = []
 
-# -------------------------
-
-
-# --------- LOAD CLASSES ---------
-try:
-    with open(CLASSES_FILE, "r") as f:
-        CLASSES = [line.strip() for line in f.readlines()]
-except FileNotFoundError:
-    raise FileNotFoundError(f"Please create {CLASSES_FILE} with all marine classes listed.")
-
-NUM_CLASSES = len(CLASSES)
-
-
-# --------- MODEL DEFINITION ---------
+# CNN + Transformer hybrid (same as training)
 class CNN_Transformer(nn.Module):
     def __init__(self, cnn, num_classes):
         super().__init__()
@@ -40,68 +29,36 @@ class CNN_Transformer(nn.Module):
         self.fc = nn.Linear(512, num_classes)
 
     def forward(self, x):
-        features = self.cnn(x)            # [batch, 512]
-        features = features.unsqueeze(0)  # [seq_len=1, batch, 512] for transformer
-        out = self.transformer(features)  # [seq_len=1, batch, 512]
-        out = out.squeeze(0)              # [batch, 512]
+        features = self.cnn(x)
+        features = features.unsqueeze(0)
+        out = self.transformer(features)
+        out = out.squeeze(0)
         out = self.fc(out)
         return out
 
-
-# Load CNN backbone
+# Placeholder model, will load weights after knowing classes
+device = "cuda" if torch.cuda.is_available() else "cpu"
 cnn = models.resnet18(pretrained=True)
-cnn.fc = nn.Identity()  # Remove final classifier
+cnn.fc = nn.Identity()
+model = None  # will initialize later after class count
 
-# Initialize model
-model = CNN_Transformer(cnn, NUM_CLASSES).to(DEVICE)
-model.eval()
-
-
-# --------- HELPER TO LOAD MODEL WEIGHTS FROM DRIVE ---------
-import gdown
-import os
-
-MODEL_PATH = "marine_final_224_aug.pth"
-
-if not os.path.exists(MODEL_PATH):
-    print("Downloading model weights from Google Drive...")
-    gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
-
-model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
-print("Model loaded successfully.")
-
-
-# --------- IMAGE TRANSFORM ---------
+# Transform for inference
 transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
+    transforms.Resize((224,224)),
     transforms.ToTensor(),
-    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    transforms.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])
 ])
 
+def init_model(num_classes):
+    global model
+    model = CNN_Transformer(cnn, num_classes).to(device)
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    model.eval()
 
-# --------- PREDICTION FUNCTION ---------
-def predict_image(img_path_or_url):
-    """
-    Predict marine animal class from image.
-    Can use local path or image URL.
-    Returns: class_name, confidence
-    """
-    # Load image
-    if img_path_or_url.startswith("http"):
-        response = requests.get(img_path_or_url)
-        img = Image.open(BytesIO(response.content)).convert("RGB")
-    else:
-        img = Image.open(img_path_or_url).convert("RGB")
-
-    # Transform
-    img_t = transform(img).unsqueeze(0).to(DEVICE)
-
-    # Forward pass
+# Prediction function
+def predict_image(image: Image.Image):
+    img = transform(image).unsqueeze(0).to(device)
     with torch.no_grad():
-        outputs = model(img_t)
-        probs = torch.softmax(outputs, dim=1)
-        conf, pred_idx = torch.max(probs, dim=1)
-        class_name = CLASSES[pred_idx.item()]
-        confidence = conf.item()
-
-    return class_name, confidence
+        outputs = model(img)
+        preds = torch.argmax(outputs, dim=1).item()
+    return CLASS_NAMES[preds]
