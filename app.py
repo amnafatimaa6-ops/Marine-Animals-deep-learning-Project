@@ -1,39 +1,47 @@
-# app.py
 import streamlit as st
-from model import predict_image
-import os
 from PIL import Image
+import os
+from model import predict_image, DATA_FOLDER, CLASS_NAMES
 
-st.title("Marine Animals Classifier 🐠🦀🐙")
+st.set_page_config(page_title="Marine Animal Classifier", layout="wide")
+st.title("🐟 Marine Animal Classifier")
 
-# ----------- LOAD DATA FOLDER -------------
-DATA_FOLDER = "marine.animals"  # folder you linked from Drive
+# -----------------------------
+# IMAGE UPLOAD
+# -----------------------------
+uploaded_file = st.file_uploader("Upload a marine animal image", type=["jpg","jpeg","png"])
 
-if not os.path.exists(DATA_FOLDER):
-    st.error(f"Dataset folder '{DATA_FOLDER}' not found. Please upload it or mount it.")
-    st.stop()
+if uploaded_file:
+    img = Image.open(uploaded_file)
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
-# List all images grouped by class folders
-classes = sorted(os.listdir(DATA_FOLDER))
-st.sidebar.header("Available Animal Classes")
-for c in classes:
-    st.sidebar.write(f"- {c}")
+    # Predict
+    st.write("Predicting...")
+    class_name, confidence = predict_image(img)
+    st.success(f"Predicted: **{class_name}** ({confidence*100:.2f}%)")
 
-# Allow user to pick a class
-selected_class = st.sidebar.selectbox("Pick an animal class to explore", classes)
+# -----------------------------
+# SHOW AVAILABLE CLASSES
+# -----------------------------
+with st.expander("Available Classes"):
+    st.write(CLASS_NAMES)
 
-class_folder = os.path.join(DATA_FOLDER, selected_class)
-images_in_class = [f for f in os.listdir(class_folder) if f.lower().endswith(("png", "jpg", "jpeg"))]
+# -----------------------------
+# OPTIONAL: SAMPLE IMAGE PICKER
+# -----------------------------
+st.markdown("---")
+st.write("Or pick a sample image from dataset:")
 
-st.write(f"**Images in {selected_class}:**")
-selected_image = st.selectbox("Pick an image to classify", images_in_class)
+import random
+sample_class = st.selectbox("Choose Class", CLASS_NAMES)
+sample_class_folder = os.path.join(DATA_FOLDER, sample_class)
+sample_images = [os.path.join(sample_class_folder, f) for f in os.listdir(sample_class_folder) if f.lower().endswith((".jpg",".png",".jpeg"))]
 
-img_path = os.path.join(class_folder, selected_image)
-img = Image.open(img_path)
-st.image(img, caption=f"Selected: {selected_image}", use_column_width=True)
+if sample_images:
+    sample_img_path = random.choice(sample_images)
+    sample_img = Image.open(sample_img_path)
+    st.image(sample_img, caption=f"Sample from {sample_class}", use_column_width=True)
 
-# Predict button
-if st.button("Predict"):
-    st.write("Running prediction...")
-    class_name, confidence = predict_image(img_path)
-    st.success(f"Predicted Class: **{class_name}**  |  Confidence: {confidence:.2f}")
+    if st.button("Predict Sample Image"):
+        class_name, confidence = predict_image(sample_img)
+        st.success(f"Predicted: **{class_name}** ({confidence*100:.2f}%)")
