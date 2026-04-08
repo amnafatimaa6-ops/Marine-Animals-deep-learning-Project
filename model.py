@@ -1,69 +1,48 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torchvision import transforms
+from torchvision import transforms, models
 from PIL import Image
 import requests
 from io import BytesIO
 
+# Classes
+CLASS_NAMES = ["Dolphin", "Shark", "Whale", "Octopus", "Sea Turtle"]
+
 # Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# CNN + Transformer model
-class CNNTransformer(nn.Module):
-    def __init__(self, num_classes=5):
-        super(CNNTransformer, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(3, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-        self.pos_embedding = nn.Parameter(torch.randn(1, 128*8*8, 128))
-        encoder_layer = nn.TransformerEncoderLayer(d_model=128, nhead=8)
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
-        self.fc = nn.Linear(128, num_classes)
-
+# Dummy model: pretrained resnet + transformer head
+class MarineClassifier(nn.Module):
+    def __init__(self, num_classes=len(CLASS_NAMES)):
+        super().__init__()
+        self.backbone = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, num_classes)
+    
     def forward(self, x):
-        x = self.conv(x)
-        B, C, H, W = x.shape
-        x = x.view(B, C*H*W, 1).permute(2, 0, 1)
-        x = x + self.pos_embedding[:, :x.size(0), :]
-        x = self.transformer(x)
-        x = x.mean(dim=0)
-        x = self.fc(x)
-        return x
-
-# Classes of marine animals
-CLASS_NAMES = ["Dolphin", "Shark", "Whale", "Octopus", "Sea Turtle"]
+        return self.backbone(x)
 
 # Initialize model
-model = CNNTransformer(num_classes=len(CLASS_NAMES)).to(device)
+model = MarineClassifier().to(device)
+model.eval()  # evaluation mode
 
-# Image transform
+# Transform for image
 transform = transforms.Compose([
-    transforms.Resize((64,64)),
+    transforms.Resize((224,224)),
     transforms.ToTensor(),
-    transforms.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225])
 ])
 
-# Prediction function
-def predict_image(img_url_or_pil):
-    if isinstance(img_url_or_pil, str):
-        response = requests.get(img_url_or_pil)
+def predict_image(url):
+    try:
+        response = requests.get(url)
         img = Image.open(BytesIO(response.content)).convert("RGB")
-    else:
-        img = img_url_or_pil
-
-    img = transform(img).unsqueeze(0).to(device)
-    model.eval()
-    with torch.no_grad():
-        output = model(img)
-        prob = F.softmax(output, dim=1)
-        conf, pred = torch.max(prob, 1)
-    return CLASS_NAMES[pred.item()], conf.item()
+        img_t = transform(img).unsqueeze(0).to(device)
+        with torch.no_grad():
+            outputs = model(img_t)
+            probs = torch.softmax(outputs, dim=1)
+            conf, pred_idx = torch.max(probs, 1)
+            pred_class = CLASS_NAMES[pred_idx.item()]
+        return pred_class, conf.item()
+    except Exception as e:
+        return "Error loading image", 0.0
