@@ -1,47 +1,45 @@
 import streamlit as st
 from PIL import Image
 import os
-from model import predict_image, DATA_FOLDER, CLASS_NAMES
+from model import predict_image, init_model, CLASS_NAMES
 
-st.set_page_config(page_title="Marine Animal Classifier", layout="wide")
-st.title("🐟 Marine Animal Classifier")
+import gdown
 
-# -----------------------------
-# IMAGE UPLOAD
-# -----------------------------
-uploaded_file = st.file_uploader("Upload a marine animal image", type=["jpg","jpeg","png"])
+# -------------------------------
+# Download and access dataset folder
+# -------------------------------
+DATA_DRIVE_URL = "https://drive.google.com/uc?id=12We6beOBig11JAZcl1gswVuow-TRKE-P"
+DATA_FOLDER = "marine.animals"
+
+if not os.path.exists(DATA_FOLDER):
+    gdown.download_folder(DATA_DRIVE_URL, quiet=False, output=DATA_FOLDER)
+
+# Build class list
+CLASS_NAMES.clear()
+CLASS_NAMES.extend([d for d in os.listdir(DATA_FOLDER) if os.path.isdir(os.path.join(DATA_FOLDER,d))])
+
+# Initialize model now that classes are known
+init_model(len(CLASS_NAMES))
+
+# -------------------------------
+# Streamlit App
+# -------------------------------
+st.title("Marine Animal Classifier 🐠")
+
+uploaded_file = st.file_uploader("Upload an image of a marine animal", type=["png","jpg","jpeg"])
 
 if uploaded_file:
-    img = Image.open(uploaded_file)
-    st.image(img, caption="Uploaded Image", use_column_width=True)
-
-    # Predict
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="Uploaded Image", use_column_width=True)
     st.write("Predicting...")
-    class_name, confidence = predict_image(img)
-    st.success(f"Predicted: **{class_name}** ({confidence*100:.2f}%)")
 
-# -----------------------------
-# SHOW AVAILABLE CLASSES
-# -----------------------------
-with st.expander("Available Classes"):
-    st.write(CLASS_NAMES)
+    label = predict_image(image)
+    st.success(f"Predicted: {label}")
 
-# -----------------------------
-# OPTIONAL: SAMPLE IMAGE PICKER
-# -----------------------------
-st.markdown("---")
-st.write("Or pick a sample image from dataset:")
-
-import random
-sample_class = st.selectbox("Choose Class", CLASS_NAMES)
-sample_class_folder = os.path.join(DATA_FOLDER, sample_class)
-sample_images = [os.path.join(sample_class_folder, f) for f in os.listdir(sample_class_folder) if f.lower().endswith((".jpg",".png",".jpeg"))]
-
-if sample_images:
-    sample_img_path = random.choice(sample_images)
-    sample_img = Image.open(sample_img_path)
-    st.image(sample_img, caption=f"Sample from {sample_class}", use_column_width=True)
-
-    if st.button("Predict Sample Image"):
-        class_name, confidence = predict_image(sample_img)
-        st.success(f"Predicted: **{class_name}** ({confidence*100:.2f}%)")
+    # Wikipedia info
+    try:
+        import wikipedia
+        summary = wikipedia.summary(label, sentences=2)
+        st.info(summary)
+    except:
+        st.info("No Wikipedia info found.")
