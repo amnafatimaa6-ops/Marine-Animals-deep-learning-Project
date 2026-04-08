@@ -1,38 +1,30 @@
 import streamlit as st
-from PIL import Image
-import requests
-from io import BytesIO
-import wikipedia
 from model import predict_image, CLASS_NAMES
+import wikipedia
 
-st.title("Marine Animal Classifier 🌊🐠")
+st.set_page_config(page_title="Marine Animal Classifier", layout="centered")
 
-# 1. User picks animal
-animal = st.selectbox("Choose a marine animal:", CLASS_NAMES)
+st.title("🐬 Marine Animal Classifier + Wikipedia Info")
+st.write("Upload an image of a marine animal, and the model will predict it and show info from Wikipedia.")
 
-# 2. Fetch image from Wikipedia
-st.write(f"Fetching image of {animal} from Wikipedia...")
-try:
-    search_results = wikipedia.search(animal)
-    page = wikipedia.page(search_results[0])
-    # find first image from page
-    image_url = page.images[0]
-    response = requests.get(image_url)
-    img = Image.open(BytesIO(response.content)).convert("RGB")
-    st.image(img, caption=f"{animal} from Wikipedia", use_column_width=True)
-except Exception as e:
-    st.error(f"Could not fetch image: {e}")
-    img = None
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
-# 3. Predict with model
-if img:
-    prediction = predict_image(img)
-    st.success(f"Model Prediction: **{prediction}**")
+url_input = st.text_input("Or enter an image URL:")
 
-# 4. Show Wikipedia info
-try:
-    summary = wikipedia.summary(animal, sentences=3)
-    st.markdown(f"### About {animal}")
-    st.write(summary)
-except Exception as e:
-    st.warning(f"Could not fetch info: {e}")
+img_path = uploaded_file if uploaded_file else url_input
+
+if img_path:
+    try:
+        st.image(img_path, caption="Uploaded Image", use_column_width=True)
+        pred, prob = predict_image(img_path)
+        st.success(f"Prediction: **{pred}** ({prob*100:.2f}%)")
+        
+        # Fetch summary from Wikipedia
+        try:
+            summary = wikipedia.summary(pred, sentences=3)
+            st.info(f"**About {pred}:**\n{summary}")
+        except:
+            st.warning(f"No Wikipedia info found for {pred}.")
+            
+    except Exception as e:
+        st.error(f"Error: {e}")
