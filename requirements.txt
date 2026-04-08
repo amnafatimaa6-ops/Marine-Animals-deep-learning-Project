@@ -1,7 +1,5 @@
+streamlit
 torch
 torchvision
 Pillow
-wikipedia
-tqdm
 gdown
-streamlit
