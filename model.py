@@ -1,64 +1,49 @@
+import os
 import torch
-import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 import gdown
-import os
 
-# ---------------------------
-# Load model from Google Drive
-# ---------------------------
+# --- Download the pre-trained model from Drive ---
+MODEL_URL = "https://drive.google.com/uc?id=1oCKoxaMzdi2ffrVeGnKKTrOoIpt0W4vE"  # replace with your file ID
+MODEL_PATH = "marine_model.pth"
 
-MODEL_DRIVE_URL = "https://drive.google.com/uc?id=1oCKoxaMzdi2ffrVeGnKKTrOoIpt0W4vE"
-MODEL_PATH = "marine_final_224_aug.pth"
-
-# Download if not present
 if not os.path.exists(MODEL_PATH):
-    gdown.download(MODEL_DRIVE_URL, MODEL_PATH, quiet=False)
+    print("Downloading pre-trained model...")
+    gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
 
-# Dummy: load class names from folder (will be updated in app.py)
-CLASS_NAMES = []
+# --- Load dataset classes ---
+DATA_FOLDER = "marine.animals"
+if not os.path.exists(DATA_FOLDER):
+    raise FileNotFoundError(
+        f"Dataset folder '{DATA_FOLDER}' not found. Please zip and download it in app.py."
+    )
 
-# CNN + Transformer hybrid (same as training)
-class CNN_Transformer(nn.Module):
-    def __init__(self, cnn, num_classes):
-        super().__init__()
-        self.cnn = cnn
-        self.transformer_layer = nn.TransformerEncoderLayer(d_model=512, nhead=8)
-        self.transformer = nn.TransformerEncoder(self.transformer_layer, num_layers=2)
-        self.fc = nn.Linear(512, num_classes)
+CLASS_NAMES = [d for d in os.listdir(DATA_FOLDER) if os.path.isdir(os.path.join(DATA_FOLDER, d))]
+CLASS_NAMES.sort()  # optional: consistent order
 
-    def forward(self, x):
-        features = self.cnn(x)
-        features = features.unsqueeze(0)
-        out = self.transformer(features)
-        out = out.squeeze(0)
-        out = self.fc(out)
-        return out
+# --- Define model ---
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = models.resnet18(pretrained=False)
+num_features = model.fc.in_features
+model.fc = torch.nn.Linear(num_features, len(CLASS_NAMES))
+model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+model.to(device)
+model.eval()
 
-# Placeholder model, will load weights after knowing classes
-device = "cuda" if torch.cuda.is_available() else "cpu"
-cnn = models.resnet18(pretrained=True)
-cnn.fc = nn.Identity()
-model = None  # will initialize later after class count
-
-# Transform for inference
+# --- Image transforms ---
 transform = transforms.Compose([
-    transforms.Resize((224,224)),
+    transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])
+    transforms.Normalize([0.485, 0.456, 0.406],
+                         [0.229, 0.224, 0.225])
 ])
 
-def init_model(num_classes):
-    global model
-    model = CNN_Transformer(cnn, num_classes).to(device)
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-    model.eval()
-
-# Prediction function
-def predict_image(image: Image.Image):
-    img = transform(image).unsqueeze(0).to(device)
+# --- Prediction function ---
+def predict_image(image_path):
+    image = Image.open(image_path).convert("RGB")
+    img_t = transform(image).unsqueeze(0).to(device)
     with torch.no_grad():
-        outputs = model(img)
-        preds = torch.argmax(outputs, dim=1).item()
-    return CLASS_NAMES[preds]
+        outputs = model(img_t)
+        _, predicted = torch.max(outputs, 1)
+    return CLASS_NAMES[predicted.item()]
