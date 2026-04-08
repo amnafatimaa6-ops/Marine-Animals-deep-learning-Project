@@ -1,12 +1,13 @@
 import streamlit as st
 from model import predict_image, CLASS_NAMES
 
+st.set_page_config(page_title="Marine Animal Classifier", layout="centered")
 st.title("Marine Animal Classifier 🐬🦈🐙")
 
 # Dropdown to select an animal
 animal_choice = st.selectbox("Choose a marine animal:", CLASS_NAMES)
 
-# Wikipedia images
+# Wikipedia image URLs
 wiki_urls = {
     "Dolphin": "https://upload.wikimedia.org/wikipedia/commons/3/3e/Common_dolphin_delphinus_delphis_2.jpg",
     "Shark": "https://upload.wikimedia.org/wikipedia/commons/f/f6/White_shark.jpg",
@@ -16,17 +17,23 @@ wiki_urls = {
 }
 
 img_url = wiki_urls[animal_choice]
+
 st.image(img_url, caption=f"Example of {animal_choice}", use_column_width=True)
 
 if st.button("Predict"):
     pred, conf = predict_image(img_url)
     st.success(f"Prediction: {pred} ({conf*100:.2f}% confidence)")
 
+    # Simple facts
     facts = {
-        "Dolphin": "Dolphins are intelligent marine mammals known for agility and playfulness.",
-        "Shark": "Sharks are elasmobranch fish with cartilaginous skeletons.",
+        "Dolphin": "Dolphins are intelligent marine mammals, playful and agile.",
+        "Shark": "Sharks are predatory fish with cartilaginous skeletons.",
         "Whale": "Whales are large marine mammals breathing through a blowhole.",
-        "Octopus": "Octopuses are soft-bodied, eight-limbed mollusks known for intelligence and camouflage.",
-        "Sea Turtle": "Sea turtles are reptiles spending most of their lives in the ocean."
+        "Octopus": "Octopuses are eight-limbed mollusks, masters of camouflage.",
+        "Sea Turtle": "Sea turtles are reptiles living mostly in oceans, laying eggs on land."
     }
-    st.info(facts.get(pred, "No facts available."))
+
+    if pred in facts:
+        st.info(facts[pred])
+    else:
+        st.info("No facts available.")
