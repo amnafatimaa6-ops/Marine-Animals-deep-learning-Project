@@ -1,34 +1,39 @@
+# app.py
 import streamlit as st
 from model import predict_image
-from PIL import Image
-import gdown
 import os
+from PIL import Image
 
-st.set_page_config(page_title="Marine Animal Classifier", layout="wide")
+st.title("Marine Animals Classifier 🐠🦀🐙")
 
-st.title("🐠 Marine Animal Classifier")
-st.write("Upload an image of a marine animal, and the model will tell you what it is and some info from Wikipedia.")
+# ----------- LOAD DATA FOLDER -------------
+DATA_FOLDER = "marine.animals"  # folder you linked from Drive
 
-# Sidebar: Upload image
-uploaded_file = st.file_uploader("Choose a marine animal image", type=["jpg","png","jpeg"])
+if not os.path.exists(DATA_FOLDER):
+    st.error(f"Dataset folder '{DATA_FOLDER}' not found. Please upload it or mount it.")
+    st.stop()
 
-# Optional: Google Drive dataset browsing
-st.sidebar.write("Or pick an image from the dataset")
-dataset_url = "https://drive.google.com/uc?id=12We6beOBig11JAZcl1gswVuow-TRKE-P"  # dataset folder (zip?) -> needs manual download
-st.sidebar.markdown(f"[Download dataset folder here]({dataset_url})")
+# List all images grouped by class folders
+classes = sorted(os.listdir(DATA_FOLDER))
+st.sidebar.header("Available Animal Classes")
+for c in classes:
+    st.sidebar.write(f"- {c}")
 
-if uploaded_file:
-    img = Image.open(uploaded_file)
-    st.image(img, caption="Uploaded Image", use_column_width=True)
+# Allow user to pick a class
+selected_class = st.sidebar.selectbox("Pick an animal class to explore", classes)
 
-    with st.spinner("Predicting..."):
-        label = predict_image(uploaded_file)
-        st.success(f"Prediction: **{label}**")
+class_folder = os.path.join(DATA_FOLDER, selected_class)
+images_in_class = [f for f in os.listdir(class_folder) if f.lower().endswith(("png", "jpg", "jpeg"))]
 
-        # Wikipedia info
-        try:
-            import wikipedia
-            summary = wikipedia.summary(label, sentences=3)
-            st.markdown(f"**About {label}:** {summary}")
-        except Exception as e:
-            st.write("Could not fetch Wikipedia info:", e)
+st.write(f"**Images in {selected_class}:**")
+selected_image = st.selectbox("Pick an image to classify", images_in_class)
+
+img_path = os.path.join(class_folder, selected_image)
+img = Image.open(img_path)
+st.image(img, caption=f"Selected: {selected_image}", use_column_width=True)
+
+# Predict button
+if st.button("Predict"):
+    st.write("Running prediction...")
+    class_name, confidence = predict_image(img_path)
+    st.success(f"Predicted Class: **{class_name}**  |  Confidence: {confidence:.2f}")
